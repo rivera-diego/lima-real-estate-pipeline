@@ -226,5 +226,5 @@ jupyter notebook analisis/analisis_urbania.ipynb
 **Diego** — Estudiante de Ingeniería de Sistemas (UTP, 10° ciclo, décimo superior)
 Orientado a Ingeniería de Datos y Análisis de Datos.
 
-📎 LinkedIn: *(agregar URL)*
-📎 GitHub: *(agregar URL)*
+📎 [LinkedIn](https://www.linkedin.com/in/diegoriverapicoy/)
+📎 [GitHub](https://github.com/rivera-diego)
