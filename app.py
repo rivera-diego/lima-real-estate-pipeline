@@ -2,11 +2,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Configuración de página
-st.set_page_config(page_title="Dashboard Inmobiliario", layout="wide")
-st.title("🏠 Análisis Agregado del Mercado Inmobiliario en Lima")
+st.set_page_config(page_title="Dashboard Inmobiliario Lima", layout="wide")
+st.title("🏠 Análisis del Mercado Inmobiliario en Lima")
 
-# 2. Cargar DATOS SEGUROS (Agregados, no individuales)
+# cargo los CSVs que armé a partir de los datos limpios de PostgreSQL
+# son promedios por distrito, no datos individuales de cada anuncio
 @st.cache_data
 def cargar_datos():
     df_resumen = pd.read_csv("data/resumen_distritos.csv")
@@ -15,118 +15,127 @@ def cargar_datos():
 
 df_resumen, df_hist = cargar_datos()
 
-# ==========================================
-# --- SIDEBAR: FILTROS INTERACTIVOS ---
-# ==========================================
-st.sidebar.header("🔍 Parámetros de Selección")
-st.sidebar.markdown("Filtra los distritos que deseas analizar frente a frente.")
+# --- SIDEBAR ---
+st.sidebar.header("🔍 Filtros")
+st.sidebar.markdown("Selecciona uno o más distritos para comparar.")
 
 distritos_disp = sorted(df_resumen['distrito_real'].unique())
 distrito_seleccionado = st.sidebar.multiselect(
-    "Selecciona Distrito(s)", 
+    "Distrito(s)",
     options=distritos_disp,
     default=[]
 )
 
-# Lógica del Filtro
+# si el usuario no seleccionó nada, muestro todos
 if len(distrito_seleccionado) > 0:
     df_graficos = df_resumen[df_resumen['distrito_real'].isin(distrito_seleccionado)]
 else:
     df_graficos = df_resumen
 
+# métricas rápidas en el sidebar
 st.sidebar.markdown("---")
-st.sidebar.metric(label="📊 Distritos Mostrados", value=len(df_graficos))
-# Calculamos sumas y promedios base
+st.sidebar.metric("📊 Distritos visibles", len(df_graficos))
+
 total_casas = df_graficos['cantidad'].sum()
-precio_promedio_total = (df_graficos['precio_promedio'] * df_graficos['cantidad']).sum() / total_casas if total_casas > 0 else 0
-st.sidebar.metric(label="🏘️ Propiedades Representadas", value=total_casas)
-st.sidebar.metric(label="💰 Promedio de esta región", value=f"S/ {precio_promedio_total:,.0f}")
+# promedio ponderado: no puedo solo promediar los promedios, tengo que ponderar por cantidad
+precio_promedio_total = (
+    (df_graficos['precio_promedio'] * df_graficos['cantidad']).sum() / total_casas
+    if total_casas > 0 else 0
+)
+st.sidebar.metric("🏘️ Propiedades representadas", total_casas)
+st.sidebar.metric("💰 Precio promedio", f"S/ {precio_promedio_total:,.0f}")
 
 
-# ==========================================
-# --- GRÁFICOS PLOTLY (Bellos e interactivos) ---
-# ==========================================
+# --- GRÁFICOS DE BARRAS ---
 st.write("---")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("Top Distritos Más Caros (Promedio)")
+    st.subheader("Distritos más caros")
     top10_caros = df_graficos.sort_values(by='precio_promedio', ascending=False).head(10)
-    
+
     if not top10_caros.empty:
-        # Gráfico dinámico de barras horizontales
         fig1 = px.bar(
-            top10_caros, 
-            x="precio_promedio", 
-            y="distrito_real", 
-            orientation='h', # Horizontal
-            text_auto='.3s', # Agrega las etiquetas de números en las barras
-            labels={'precio_promedio': 'Precio M. (S/.)', 'distrito_real': 'Distrito'},
+            top10_caros,
+            x="precio_promedio",
+            y="distrito_real",
+            orientation='h',
+            text_auto='.3s',
+            labels={'precio_promedio': 'Precio promedio (S/)', 'distrito_real': ''},
             color='precio_promedio',
-            color_continuous_scale='sunsetdark' # Paleta super profesional y oscura
+            color_continuous_scale='sunsetdark'
         )
-        # Volteamos el eje Y para que el Distrito más caro salga primero arriba
-        fig1.update_layout(yaxis={'categoryorder':'total ascending'}, coloraxis_showscale=False)
+        # ordeno de mayor a menor (ascending porque el eje Y en horizontal se invierte)
+        fig1.update_layout(yaxis={'categoryorder': 'total ascending'}, coloraxis_showscale=False)
         st.plotly_chart(fig1, use_container_width=True)
 
 with col2:
-    st.subheader("Top Distritos Más Económicos")
+    st.subheader("Distritos más económicos")
     top10_baratos = df_graficos.sort_values(by='precio_promedio', ascending=True).head(10)
-    
+
     if not top10_baratos.empty:
         fig2 = px.bar(
-            top10_baratos, 
-            x="precio_promedio", 
-            y="distrito_real", 
+            top10_baratos,
+            x="precio_promedio",
+            y="distrito_real",
             orientation='h',
             text_auto='.3s',
-            labels={'precio_promedio': 'Precio M. (S/.)', 'distrito_real': 'Distrito'},
+            labels={'precio_promedio': 'Precio promedio (S/)', 'distrito_real': ''},
             color='precio_promedio',
             color_continuous_scale='haline'
         )
-        fig2.update_layout(yaxis={'categoryorder':'total descending'}, coloraxis_showscale=False)
+        fig2.update_layout(yaxis={'categoryorder': 'total descending'}, coloraxis_showscale=False)
         st.plotly_chart(fig2, use_container_width=True)
 
 
-# MAPA PREMIUM Y OPTIMIZADO
+# --- MAPA POR DISTRITOS ---
 st.write("---")
-st.subheader("Mapa Sintético del Mercado por Distritos")
-st.write("📌 *Cada burbuja representa la centralidad de oferta de un distrito. El **tamaño** es el volumen de casas en venta y el **color** indica precio promedio.*")
+st.subheader("Mapa por Distritos")
+st.write("📌 *El tamaño de cada burbuja indica cuántas propiedades hay en ese distrito. El color indica el precio promedio.*")
 
 if not df_graficos.empty:
     fig_mapa = px.scatter_mapbox(
-        df_graficos, 
-        lat="latitud_centro", 
+        df_graficos,
+        lat="latitud_centro",
         lon="longitud_centro",
-        hover_name="distrito_real", 
-        # Que mostrar al pasar el mouse por encima
-        hover_data={"latitud_centro": False, "longitud_centro": False, "precio_promedio": ":,.0f", "cantidad": True},
+        hover_name="distrito_real",
+        # oculto lat/lon del tooltip porque no aportan nada al usuario
+        hover_data={
+            "latitud_centro": False,
+            "longitud_centro": False,
+            "precio_promedio": ":,.0f",
+            "cantidad": True
+        },
         color="precio_promedio",
-        size="cantidad",            # Las burbujas grandes significan más casas
+        size="cantidad",
         color_continuous_scale="Plasma",
-        size_max=40,                # Burbuja máxima
-        zoom=10, 
-        mapbox_style="carto-darkmatter"  # Mapa negro moderno
+        size_max=40,
+        zoom=10,
+        mapbox_style="carto-darkmatter"
     )
-    # Limpiamos los bordes muertos del grafico para que use todo el layout web
-    fig_mapa.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+    fig_mapa.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
     st.plotly_chart(fig_mapa, use_container_width=True)
 
 
-# HISTOGRAMA GLOBAL (Usa Base Completa para Referencia)
+# --- DISTRIBUCIÓN GLOBAL DE PRECIOS ---
 st.write("---")
-st.subheader("Curva de Distribución de Propiedades (Global)")
+st.subheader("Distribución de Precios (todos los datos limpios)")
+
+# este gráfico no cambia con el filtro, siempre muestra el histograma completo como referencia
 fig3 = px.bar(
-    df_hist, 
-    x="rango_inicio", 
-    y="cantidad", 
-    labels={'rango_inicio': 'Rango Base (Precio Mínimo de Tramo)', 'cantidad': 'Cantidad Inmuebles'},
+    df_hist,
+    x="rango_inicio",
+    y="cantidad",
+    labels={'rango_inicio': 'Precio base del tramo (S/)', 'cantidad': 'Cantidad de propiedades'},
     color='cantidad',
     color_continuous_scale='Teal'
 )
-# Truco en Plotly para forzar que sea un histograma sin espacios y moderno
+# bargap=0 para que las barras se toquen y parezca un histograma real
 fig3.update_traces(marker_line_width=0)
 fig3.update_layout(bargap=0, coloraxis_showscale=False)
 st.plotly_chart(fig3, use_container_width=True)
 
-st.markdown("> 🛡️ *Nota de Legalidad: Respetando estrictamente los Términos de Servicio, los datos de este dashboard son agregaciones matemáticas de nivel distrital y estadístico, sin contener datos crudos ni personales.*")
+st.markdown(
+    "> 🛡️ *Los datos de este dashboard son promedios y conteos por distrito calculados a partir de anuncios públicos. "
+    "No se redistribuyen datos individuales ni información de contacto de los anunciantes.*"
+)

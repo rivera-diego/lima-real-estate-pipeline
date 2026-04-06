@@ -1,9 +1,8 @@
 import json
 import psycopg2
 
-print("Iniciando conexión a PostgreSQL...")
+print("Conectando a la base de datos...")
 try:
-    # Nos conectamos a la base de datos local
     conn = psycopg2.connect(
         dbname="urbania_db",
         user="diego",
@@ -11,13 +10,11 @@ try:
         host="127.0.0.1",
         port="5432"
     )
-    # Autocommit activado para que cada ejecución se guarde sola
     conn.autocommit = True
     cursor = conn.cursor()
-    print("Conexión exitosa. Comenzando a leer datos...")
+    print("Conexión lista. Leyendo el archivo JSONL...")
 
     ruta_archivo = "raw/postings_raw.jsonl"
-
     procesados = 0
     errores = 0
 
@@ -26,22 +23,20 @@ try:
             try:
                 anuncio = json.loads(linea)
 
-                # ==========================================
-                # 1. LIMPIEZA DE DATOS (Transformación)
-                # ==========================================
+                # ---- EXTRACCIÓN ----
 
-                # A. Extraer Anunciante
+                # datos del anunciante (puede ser inmobiliaria o persona natural)
                 publisher = anuncio.get("publisher", {})
                 pub_id = publisher.get("publisherId")
                 pub_name = publisher.get("name")
                 pub_type = publisher.get("publisherTypeId")
 
-                # B. Extraer Ubicación (Distrito)
+                # la ubicación viene anidada: location tiene el distrito, y parent tiene la ciudad/zona
                 loc_info = anuncio.get("postingLocation", {}).get("location", {})
                 distrito = loc_info.get("name")
                 ciudad = loc_info.get("parent", {}).get("name") if loc_info.get("parent") else None
 
-                # C. Extraer Coordenadas de forma segura (Como en script.py)
+                # las coordenadas no siempre existen, muchos anuncios no las publican
                 lat = None
                 lon = None
                 try:
@@ -50,9 +45,9 @@ try:
                         lat = geo.get("latitude")
                         lon = geo.get("longitude")
                 except (KeyError, TypeError):
-                    pass
+                    pass  # si no hay coordenadas simplemente dejo lat/lon en None
 
-                # D. Extraer Precios (Soles y Dólares si hay)
+                # los precios vienen en una lista porque un anuncio puede tener precio en soles Y en dólares
                 precio_usd = None
                 precio_soles = None
                 operaciones = anuncio.get("priceOperationTypes", [])
@@ -63,10 +58,9 @@ try:
                         elif precio.get("currency") == "S/":
                             precio_soles = precio.get("amount")
 
-                # E. Extraer Características (CFT...)
+                # las características vienen con códigos internos (CFT100 = área total, CFT2 = dormitorios, etc.)
                 features = anuncio.get("mainFeatures", {})
 
-                # Función auxiliar para sacar números de los textos ("5", "120")
                 def extraer_numero(cft_clave):
                     val = features.get(cft_clave, {}).get("value")
                     try:
@@ -85,12 +79,10 @@ try:
                 title = anuncio.get("title")
                 url_anuncio = anuncio.get("url")
 
-                # ==========================================
-                # 2. INSERCIÓN EN POSTGRESQL (Load)
-                # ==========================================
+                # ---- CARGA EN POSTGRESQL ----
 
-                # 2A. Insertar Dimension Anunciante
-                # ON CONFLICT DO NOTHING sirve para ignorar silenciosamente si el anunciante ya existe
+                # primero inserto el anunciante
+                # ON CONFLICT DO NOTHING para no romper nada si ya existe
                 if pub_id:
                     cursor.execute("""
                         INSERT INTO dim_anunciante (publisher_id, name, publisher_type_id)
@@ -98,8 +90,7 @@ try:
                         ON CONFLICT (publisher_id) DO NOTHING
                     """, (pub_id, pub_name, pub_type))
 
-                # 2B. Insertar Dimension Ubicacion y obtener su ID de vuelta
-                # Si el distrito ya existe, agarramos su ID. Si no, lo inserta y nos da el nuevo ID.
+                # luego la ubicación — si ya existe el distrito, solo recupero su ID
                 loc_id_bd = None
                 if distrito:
                     cursor.execute("""
@@ -119,7 +110,8 @@ try:
                     if resultado:
                         loc_id_bd = resultado[0]
 
-                # 2C. Insertar Tabla de Hechos
+                # finalmente la propiedad en la tabla de hechos
+                # si el anuncio ya existe (mismo posting_id), actualizo el precio por si cambió
                 if posting_id:
                     cursor.execute("""
                         INSERT INTO fact_propiedades (
@@ -130,7 +122,7 @@ try:
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                         )
                         ON CONFLICT (posting_id) DO UPDATE SET
-                            precio_usd = EXCLUDED.precio_usd,   -- Actualizamos info vital si el anuncio cambió de precio a futuro
+                            precio_usd = EXCLUDED.precio_usd,
                             precio_soles = EXCLUDED.precio_soles
                     """, (
                         posting_id, title, precio_usd, precio_soles, area_total,
@@ -140,21 +132,20 @@ try:
 
                 procesados += 1
                 if procesados % 1000 == 0:
-                    print(f"Propiedades guardadas: {procesados}...")
+                    print(f"  {procesados} propiedades cargadas...")
 
             except Exception as e:
                 errores += 1
-                # print(f"Error procesando una línea: {e}")
+                # no rompo el loop por un error en una línea, sigo con la siguiente
 
-    print("\n¡Carga finalizada con éxito!")
-    print(f"Total procesados: {procesados}")
+    print(f"\nCarga terminada.")
+    print(f"Propiedades cargadas: {procesados}")
     if errores > 0:
-        print(f"Alertas de datos rotos ignoradas: {errores}")
+        print(f"Líneas con error ignoradas: {errores}")
 
 except Exception as e:
-    print(f"Error fatal: {e}")
+    print(f"Error al conectar: {e}")
 finally:
-    # Cerrar conexión
     if 'conn' in locals():
         cursor.close()
         conn.close()
