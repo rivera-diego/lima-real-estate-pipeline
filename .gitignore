@@ -1,25 +1,17 @@
-# Datos crudos (ToS + tamaño)
-raw/postings_raw.jsonl
-data_urbania.json
-
-# Scripts de extracción (metodología propietaria)
-extractor_v2.py
-urbania.py
-
-# Scripts de práctica / temporales
-script.py
-typescript
-
-# Entorno Python
+# Base
 .venv/
 __pycache__/
 *.pyc
-
-# Configuraciones de IAs locales
+.env
+typescript
+script.py
 .qwen/
 CONTEXT.md
-.github/
-# Logs
 raw/run_log.json
-.env
-data/
+data_urbania.json
+raw/
+extractor_v2.py
+urbania.py
+
+# Importante: No ignoramos la carpeta 'data/' porque 
+# ahora contiene nuestros resúmenes matemáticos seguros.
