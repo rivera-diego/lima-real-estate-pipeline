@@ -1,142 +1,132 @@
-import folium
-import matplotlib.pyplot as plt
-import pandas as pd
-import seaborn as sns
 import streamlit as st
-from streamlit_folium import st_folium
+import pandas as pd
+import plotly.express as px
 
-# 1. Configuración general
+# 1. Configuración de página
 st.set_page_config(page_title="Dashboard Inmobiliario", layout="wide")
-st.title("🏠 Análisis del Mercado Inmobiliario en Lima")
+st.title("🏠 Análisis Agregado del Mercado Inmobiliario en Lima")
 
-# 2. Cargar Datos
+# 2. Cargar DATOS SEGUROS (Agregados, no individuales)
 @st.cache_data
 def cargar_datos():
-    # En la nube ya no podemos usar la base local (postgresql://127.0.0.1)
-    # Por eso leemos el extracto limpio que preparamos:
-    df = pd.read_csv("data/propiedades_limpias.csv")
-    return df
+    df_resumen = pd.read_csv("data/resumen_distritos.csv")
+    df_hist = pd.read_csv("data/histograma_precios.csv")
+    return df_resumen, df_hist
 
-df = cargar_datos()
+df_resumen, df_hist = cargar_datos()
 
-# ========================================================
-# --- LA MAGIA: FILTROS INTERACTIVOS EN LA BARRA LATERAL ---
-# ========================================================
-st.sidebar.header("🔍 Filtros de Búsqueda")
+# ==========================================
+# --- SIDEBAR: FILTROS INTERACTIVOS ---
+# ==========================================
+st.sidebar.header("🔍 Parámetros de Selección")
+st.sidebar.markdown("Filtra los distritos que deseas analizar frente a frente.")
 
-# 1. Filtro Desplegable Múltiple (Distritos)
-distritos_unicos = sorted(df['distrito_real'].dropna().unique())
+distritos_disp = sorted(df_resumen['distrito_real'].unique())
 distrito_seleccionado = st.sidebar.multiselect(
-    "Selecciona Distrito(s)",
-    options=distritos_unicos,
-    default=[] # Por defecto inicia vacío (lo que significa: "mostrar todos")
+    "Selecciona Distrito(s)", 
+    options=distritos_disp,
+    default=[]
 )
 
-# 2. Filtro Tipo Deslizador (Rango de Precio)
-precio_min = int(df['precio_soles'].min())
-precio_max = int(df['precio_soles'].max())
-
-rango_precio = st.sidebar.slider(
-    "Rango de Precio (S/)",
-    min_value=precio_min,
-    max_value=precio_max,
-    value=(precio_min, precio_max), # Por defecto el slider abarca desde el menor al mayor
-    step=50000,
-    format="S/ %d"
-)
-
-# 3. APLICAR FILTROS (Crear el sub-dataframe df_filtrado)
-df_filtrado = df.copy()
-
-# A: Solo conservar (filtrar) aquellos que estén en los distritos seleccionados 
+# Lógica del Filtro
 if len(distrito_seleccionado) > 0:
-    # .isin() dice: "quédate con las filas cuyo distrito esté DE ADENTRO de esta lista"
-    df_filtrado = df_filtrado[df_filtrado['distrito_real'].isin(distrito_seleccionado)]
+    df_graficos = df_resumen[df_resumen['distrito_real'].isin(distrito_seleccionado)]
+else:
+    df_graficos = df_resumen
 
-# B: Y además, quedarse solo con los precios > Mínimo del slider y < Máximo del slider
-df_filtrado = df_filtrado[
-    (df_filtrado['precio_soles'] >= rango_precio[0]) & 
-    (df_filtrado['precio_soles'] <= rango_precio[1])
-]
-
-# Imprimir en la barra cuántos registros sobrevivieron al filtro
 st.sidebar.markdown("---")
-st.sidebar.markdown(f"**📌 {len(df_filtrado)} propiedades mostradas.**")
+st.sidebar.metric(label="📊 Distritos Mostrados", value=len(df_graficos))
+# Calculamos sumas y promedios base
+total_casas = df_graficos['cantidad'].sum()
+precio_promedio_total = (df_graficos['precio_promedio'] * df_graficos['cantidad']).sum() / total_casas if total_casas > 0 else 0
+st.sidebar.metric(label="🏘️ Propiedades Representadas", value=total_casas)
+st.sidebar.metric(label="💰 Promedio de esta región", value=f"S/ {precio_promedio_total:,.0f}")
 
 
-# ========================================================
-# --- GRÁFICOS DINÁMICOS (Ahora usan df_filtrado) ---
-# ========================================================
-
-# Pongo los dos primeros gráficos en 2 columnas para usar mejor el espacio
+# ==========================================
+# --- GRÁFICOS PLOTLY (Bellos e interactivos) ---
+# ==========================================
+st.write("---")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("Top distritos más caros")
-    # Nota que aquí ya no uso "df", uso mi variable "df_filtrado" recién cortada
-    top10_caros = df_filtrado.groupby("distrito_real")["precio_soles"].mean().round(2).sort_values(ascending=False).head(10).reset_index()
+    st.subheader("Top Distritos Más Caros (Promedio)")
+    top10_caros = df_graficos.sort_values(by='precio_promedio', ascending=False).head(10)
     
     if not top10_caros.empty:
-        fig1, ax1 = plt.subplots(figsize=(8, 5))
-        sns.barplot(data=top10_caros, x="precio_soles", y="distrito_real", ax=ax1)
-        ax1.xaxis.set_major_formatter(lambda x, pos: f"S/ {x / 1e6:.1f}M" if x >= 1e6 else f"S/ {x / 1e3:.0f}K")
-        plt.xlabel("Precio")
-        plt.ylabel("")
-        plt.tight_layout()
-        st.pyplot(fig1)
+        # Gráfico dinámico de barras horizontales
+        fig1 = px.bar(
+            top10_caros, 
+            x="precio_promedio", 
+            y="distrito_real", 
+            orientation='h', # Horizontal
+            text_auto='.3s', # Agrega las etiquetas de números en las barras
+            labels={'precio_promedio': 'Precio M. (S/.)', 'distrito_real': 'Distrito'},
+            color='precio_promedio',
+            color_continuous_scale='sunsetdark' # Paleta super profesional y oscura
+        )
+        # Volteamos el eje Y para que el Distrito más caro salga primero arriba
+        fig1.update_layout(yaxis={'categoryorder':'total ascending'}, coloraxis_showscale=False)
+        st.plotly_chart(fig1, use_container_width=True)
 
 with col2:
-    st.subheader("Top distritos más económicos")
-    top10_baratos = df_filtrado.groupby("distrito_real")["precio_soles"].mean().round(2).sort_values(ascending=True).head(10).reset_index()
+    st.subheader("Top Distritos Más Económicos")
+    top10_baratos = df_graficos.sort_values(by='precio_promedio', ascending=True).head(10)
     
     if not top10_baratos.empty:
-        fig2, ax2 = plt.subplots(figsize=(8, 5))
-        sns.barplot(data=top10_baratos, x="precio_soles", y="distrito_real", ax=ax2)
-        ax2.xaxis.set_major_formatter(lambda x, pos: f"S/ {x / 1e6:.1f}M" if x >= 1e6 else f"S/ {x / 1e3:.0f}K")
-        plt.xlabel("Precio")
-        plt.ylabel("")
-        plt.tight_layout()
-        st.pyplot(fig2)
+        fig2 = px.bar(
+            top10_baratos, 
+            x="precio_promedio", 
+            y="distrito_real", 
+            orientation='h',
+            text_auto='.3s',
+            labels={'precio_promedio': 'Precio M. (S/.)', 'distrito_real': 'Distrito'},
+            color='precio_promedio',
+            color_continuous_scale='haline'
+        )
+        fig2.update_layout(yaxis={'categoryorder':'total descending'}, coloraxis_showscale=False)
+        st.plotly_chart(fig2, use_container_width=True)
 
+
+# MAPA PREMIUM Y OPTIMIZADO
 st.write("---")
-st.subheader("Distribución de Precios")
-if not df_filtrado.empty:
-    fig3, ax3 = plt.subplots(figsize=(10, 3))
-    sns.histplot(df_filtrado["precio_soles"].dropna(), bins=50, kde=True, ax=ax3)
-    plt.xlabel("Precio (S/)")
-    plt.ylabel("Cantidad")
-    sns.despine(top=True, right=True, left=False, bottom=False, ax=ax3)
-    ax3.xaxis.set_major_formatter(lambda x, pos: f"S/ {x / 1e6:.1f}M" if x >= 1e6 else f"S/ {x / 1e3:.0f}K")
-    plt.tight_layout()
-    st.pyplot(fig3)
+st.subheader("Mapa Sintético del Mercado por Distritos")
+st.write("📌 *Cada burbuja representa la centralidad de oferta de un distrito. El **tamaño** es el volumen de casas en venta y el **color** indica precio promedio.*")
 
+if not df_graficos.empty:
+    fig_mapa = px.scatter_mapbox(
+        df_graficos, 
+        lat="latitud_centro", 
+        lon="longitud_centro",
+        hover_name="distrito_real", 
+        # Que mostrar al pasar el mouse por encima
+        hover_data={"latitud_centro": False, "longitud_centro": False, "precio_promedio": ":,.0f", "cantidad": True},
+        color="precio_promedio",
+        size="cantidad",            # Las burbujas grandes significan más casas
+        color_continuous_scale="Plasma",
+        size_max=40,                # Burbuja máxima
+        zoom=10, 
+        mapbox_style="carto-darkmatter"  # Mapa negro moderno
+    )
+    # Limpiamos los bordes muertos del grafico para que use todo el layout web
+    fig_mapa.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+    st.plotly_chart(fig_mapa, use_container_width=True)
+
+
+# HISTOGRAMA GLOBAL (Usa Base Completa para Referencia)
 st.write("---")
-st.subheader("Mapa (Interactivo)")
-# Filtramos mapa quitando nulos de gps, como siempre, pero basado en el total ya filtrado
-df_mapa = df_filtrado.dropna(subset=["latitud", "longitud"])
+st.subheader("Curva de Distribución de Propiedades (Global)")
+fig3 = px.bar(
+    df_hist, 
+    x="rango_inicio", 
+    y="cantidad", 
+    labels={'rango_inicio': 'Rango Base (Precio Mínimo de Tramo)', 'cantidad': 'Cantidad Inmuebles'},
+    color='cantidad',
+    color_continuous_scale='Teal'
+)
+# Truco en Plotly para forzar que sea un histograma sin espacios y moderno
+fig3.update_traces(marker_line_width=0)
+fig3.update_layout(bargap=0, coloraxis_showscale=False)
+st.plotly_chart(fig3, use_container_width=True)
 
-if not df_mapa.empty:
-    lima_coords = [-12.0464, -77.0428]
-    mapa = folium.Map(location=lima_coords, zoom_start=11)
-    
-    # ⚠️ OPTIMIZACIÓN WEB: Streamlit procesa el mapa algo lento en el Frontend, 
-    # En Data Science si hay más de 1000 puntos en folium para interfaz web, se toma una muestra (sample) 
-    # al azar de 1500 puntos para que no colapse el navegador del computador de quien evalúe esto.
-    if len(df_mapa) > 1500:
-        st.info(f"Mostrando muestra de 1500 puntos (de {len(df_mapa)}) por rendimiento al navegador. Usa Filtros para explorar más.")
-        df_mapa = df_mapa.sample(1500)
-
-    for indice, fila in df_mapa.iterrows():
-        folium.CircleMarker(
-            location=[fila["latitud"], fila["longitud"]],
-            radius=3,
-            popup=str(fila["urbanizacion"]) + " - " + str(fila["distrito_real"]),
-            color="blue",
-            fill=True,
-            fill_color="cyan",
-            fill_opacity=0.6,
-        ).add_to(mapa)
-
-    st_folium(mapa, width="100%", height=500)
-else:
-    st.warning("No hay resultados de coordenadas para mostrar mapa con ese filtro.")
+st.markdown("> 🛡️ *Nota de Legalidad: Respetando estrictamente los Términos de Servicio, los datos de este dashboard son agregaciones matemáticas de nivel distrital y estadístico, sin contener datos crudos ni personales.*")
