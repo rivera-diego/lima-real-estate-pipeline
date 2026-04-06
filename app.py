@@ -3,7 +3,9 @@ import pandas as pd
 import plotly.express as px
 
 st.set_page_config(page_title="Dashboard Inmobiliario Lima", layout="wide")
-st.title("🏠 Análisis del Mercado Inmobiliario en Lima")
+st.title("🏠 Análisis del Mercado (datos reales) — Lima, Perú")
+st.caption("Dashboard interactivo con fines académicos y de investigación. "
+           "Los datos presentados son agregaciones de anuncios inmobiliarios reales.")
 
 # cargo los CSVs que armé a partir de los datos limpios de PostgreSQL
 # son promedios por distrito, no datos individuales de cada anuncio
