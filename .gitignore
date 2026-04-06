@@ -22,3 +22,4 @@ CONTEXT.md
 # Logs
 raw/run_log.json
 .env
+data/
