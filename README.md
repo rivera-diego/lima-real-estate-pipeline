@@ -1,6 +1,10 @@
 # 🏠 Pipeline de Análisis del Mercado Inmobiliario (datos reales) — Lima, Perú
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://lima-real-estate-pipeline.streamlit.app/)
+
 > **Nota Importante**: Este es un proyecto desarrollado exclusivamente con **fines académicos, de investigación y portafolio educativo**. Los datos analizados provienen de anuncios públicos disponibles en portales inmobiliarios líderes en Perú (como Urbania.pe). Se priorizó en todo momento el cumplimiento ético: **no se incluyen los datos crudos**, no se distribuye el código de recolección automatizada, y el análisis final presenta únicamente **estadísticas agregadas** que no vulneran la privacidad de los anunciantes ni la propiedad intelectual de la fuente original.
+
+> ⏱️ **Nota sobre el dashboard**: Streamlit apaga la app automáticamente si no recibe visitas por varios días. Si aparece el mensaje *"This app has gone to sleep"*, haz clic en **"Yes, get this app back up!"** y espera ~30 segundos.
 
 ---
 
