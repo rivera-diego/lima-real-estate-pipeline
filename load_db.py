@@ -2,6 +2,10 @@ import json
 import os
 
 import psycopg2
+from dotenv import load_dotenv
+
+# Cargamos las variables de entorno del archivo .env
+load_dotenv()
 
 db_config = {
     "dbname": os.getenv("DB_NAME", "urbania_db"),

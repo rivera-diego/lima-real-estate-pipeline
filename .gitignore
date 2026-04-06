@@ -15,3 +15,4 @@ urbania.py
 
 # Importante: No ignoramos la carpeta 'data/' porque 
 # ahora contiene nuestros resúmenes matemáticos seguros.
+data/propiedades_limpias.csv
