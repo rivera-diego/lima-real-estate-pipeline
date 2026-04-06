@@ -1,15 +1,24 @@
 import json
+import os
+
 import psycopg2
+
+db_config = {
+    "dbname": os.getenv("DB_NAME", "urbania_db"),
+    "user": os.getenv("DB_USER", "diego"),
+    "password": os.getenv("DB_PASSWORD"),
+    "host": os.getenv("DB_HOST", "127.0.0.1"),
+    "port": os.getenv("DB_PORT", "5432"),
+}
+
+if not db_config["password"]:
+    raise RuntimeError(
+        "Falta DB_PASSWORD. Exporta la variable de entorno antes de ejecutar load_db.py"
+    )
 
 print("Conectando a la base de datos...")
 try:
-    conn = psycopg2.connect(
-        dbname="urbania_db",
-        user="diego",
-        password="admin",
-        host="127.0.0.1",
-        port="5432"
-    )
+    conn = psycopg2.connect(**db_config)
     conn.autocommit = True
     cursor = conn.cursor()
     print("Conexión lista. Leyendo el archivo JSONL...")
@@ -34,13 +43,19 @@ try:
                 # la ubicación viene anidada: location tiene el distrito, y parent tiene la ciudad/zona
                 loc_info = anuncio.get("postingLocation", {}).get("location", {})
                 distrito = loc_info.get("name")
-                ciudad = loc_info.get("parent", {}).get("name") if loc_info.get("parent") else None
+                ciudad = (
+                    loc_info.get("parent", {}).get("name")
+                    if loc_info.get("parent")
+                    else None
+                )
 
                 # las coordenadas no siempre existen, muchos anuncios no las publican
                 lat = None
                 lon = None
                 try:
-                    geo = anuncio["postingLocation"]["postingGeolocation"]["geolocation"]
+                    geo = anuncio["postingLocation"]["postingGeolocation"][
+                        "geolocation"
+                    ]
                     if geo:
                         lat = geo.get("latitude")
                         lon = geo.get("longitude")
@@ -70,10 +85,26 @@ try:
 
                 area_total = extraer_numero("CFT100")
                 area_techada = extraer_numero("CFT101")
-                dormitorios = int(extraer_numero("CFT2")) if extraer_numero("CFT2") is not None else None
-                banios = int(extraer_numero("CFT3")) if extraer_numero("CFT3") is not None else None
-                cocheras = int(extraer_numero("CFT7")) if extraer_numero("CFT7") is not None else None
-                antiguedad = int(extraer_numero("CFT20")) if extraer_numero("CFT20") is not None else None
+                dormitorios = (
+                    int(extraer_numero("CFT2"))
+                    if extraer_numero("CFT2") is not None
+                    else None
+                )
+                banios = (
+                    int(extraer_numero("CFT3"))
+                    if extraer_numero("CFT3") is not None
+                    else None
+                )
+                cocheras = (
+                    int(extraer_numero("CFT7"))
+                    if extraer_numero("CFT7") is not None
+                    else None
+                )
+                antiguedad = (
+                    int(extraer_numero("CFT20"))
+                    if extraer_numero("CFT20") is not None
+                    else None
+                )
 
                 posting_id = anuncio.get("postingId")
                 title = anuncio.get("title")
@@ -84,16 +115,20 @@ try:
                 # primero inserto el anunciante
                 # ON CONFLICT DO NOTHING para no romper nada si ya existe
                 if pub_id:
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         INSERT INTO dim_anunciante (publisher_id, name, publisher_type_id)
                         VALUES (%s, %s, %s)
                         ON CONFLICT (publisher_id) DO NOTHING
-                    """, (pub_id, pub_name, pub_type))
+                    """,
+                        (pub_id, pub_name, pub_type),
+                    )
 
                 # luego la ubicación — si ya existe el distrito, solo recupero su ID
                 loc_id_bd = None
                 if distrito:
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         WITH insertado AS (
                             INSERT INTO dim_ubicacion (distrito, ciudad)
                             VALUES (%s, %s)
@@ -104,7 +139,9 @@ try:
                         UNION ALL
                         SELECT location_id FROM dim_ubicacion WHERE distrito = %s
                         LIMIT 1;
-                    """, (distrito, ciudad, distrito))
+                    """,
+                        (distrito, ciudad, distrito),
+                    )
 
                     resultado = cursor.fetchone()
                     if resultado:
@@ -113,7 +150,8 @@ try:
                 # finalmente la propiedad en la tabla de hechos
                 # si el anuncio ya existe (mismo posting_id), actualizo el precio por si cambió
                 if posting_id:
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         INSERT INTO fact_propiedades (
                             posting_id, title, precio_usd, precio_soles, area_total,
                             area_techada, dormitorios, banios, cocheras, antiguedad,
@@ -124,21 +162,35 @@ try:
                         ON CONFLICT (posting_id) DO UPDATE SET
                             precio_usd = EXCLUDED.precio_usd,
                             precio_soles = EXCLUDED.precio_soles
-                    """, (
-                        posting_id, title, precio_usd, precio_soles, area_total,
-                        area_techada, dormitorios, banios, cocheras, antiguedad,
-                        pub_id, loc_id_bd, lat, lon, url_anuncio
-                    ))
+                    """,
+                        (
+                            posting_id,
+                            title,
+                            precio_usd,
+                            precio_soles,
+                            area_total,
+                            area_techada,
+                            dormitorios,
+                            banios,
+                            cocheras,
+                            antiguedad,
+                            pub_id,
+                            loc_id_bd,
+                            lat,
+                            lon,
+                            url_anuncio,
+                        ),
+                    )
 
                 procesados += 1
                 if procesados % 1000 == 0:
                     print(f"  {procesados} propiedades cargadas...")
 
-            except Exception as e:
+            except Exception:
                 errores += 1
                 # no rompo el loop por un error en una línea, sigo con la siguiente
 
-    print(f"\nCarga terminada.")
+    print("\nCarga terminada.")
     print(f"Propiedades cargadas: {procesados}")
     if errores > 0:
         print(f"Líneas con error ignoradas: {errores}")
@@ -146,6 +198,6 @@ try:
 except Exception as e:
     print(f"Error al conectar: {e}")
 finally:
-    if 'conn' in locals():
+    if "conn" in locals():
         cursor.close()
         conn.close()

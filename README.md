@@ -196,6 +196,16 @@ createdb urbania_db
 psql -d urbania_db -f schema.sql
 ```
 
+Define las credenciales por variables de entorno (evita contraseñas en el código):
+
+```bash
+export DB_NAME=urbania_db
+export DB_USER=diego
+export DB_PASSWORD='tu_password_real'
+export DB_HOST=127.0.0.1
+export DB_PORT=5432
+```
+
 Carga tus datos con:
 
 ```bash
