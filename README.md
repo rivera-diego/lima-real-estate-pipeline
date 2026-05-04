@@ -4,7 +4,7 @@
 
 ![Dashboard Demo](demo_dashboard.gif)
 
-> **Nota Importante**: Este es un proyecto desarrollado exclusivamente con **fines académicos, de investigación y portafolio educativo**. Los datos analizados provienen de anuncios públicos disponibles en portales inmobiliarios líderes en Perú (como Urbania.pe). Se priorizó en todo momento el cumplimiento ético: **no se incluyen los datos crudos**, no se distribuye el código de recolección automatizada, y el análisis final presenta únicamente **estadísticas agregadas** que no vulneran la privacidad de los anunciantes ni la propiedad intelectual de la fuente original.
+> **Nota Importante**: Este es un proyecto desarrollado exclusivamente con **fines académicos, de investigación y portafolio educativo**. Los datos analizados provienen de anuncios públicos disponibles en [urbania.com](https://urbania.com). Se priorizó en todo momento el cumplimiento ético: **no se incluyen los datos crudos**, no se distribuye el código de recolección automatizada, y el análisis final presenta únicamente **estadísticas agregadas** que no vulneran la privacidad de los anunciantes ni la propiedad intelectual de la fuente original.
 
 > ⏱️ **Nota sobre el dashboard**: Streamlit apaga la app automáticamente si no recibe visitas por varios días. Si aparece el mensaje *"This app has gone to sleep"*, haz clic en **"Yes, get this app back up!"** y espera ~30 segundos.
 
@@ -16,7 +16,7 @@ El mercado inmobiliario de Lima es uno de los más activos de Latinoamérica, pe
 
 El objetivo del proyecto tiene dos niveles:
 1. **Técnico**: construir un pipeline ETL de producción (extracción → transformación → almacenamiento → análisis).
-2. **Analítico**: responder preguntas concretas sobre el mercado inmobiliario limeño: ¿Cuáles son los distritos más caros? ¿Cómo está distribuida la oferta geográficamente? ¿Los precios publicados son confiables?
+2. **Analítico**: responder preguntas concretas sobre el mercado inmobiliario limeño: ¿Cuáles son los distritos más caros? ¿Cómo está distribuida la oferta? ¿Qué tipo de propiedad predomina?
 
 ---
 
@@ -30,9 +30,9 @@ El objetivo del proyecto tiene dos niveles:
 └─────────────────┘     └──────────────────┘     └──────────────────┘     └───────────────────┘
                                                                                      │
                                                                           ┌──────────▼──────────┐
-                                                                          │  Análisis & EDA     │
-                                                                          │  Pandas + Seaborn   │
-                                                                          │  + Folium (mapa)    │
+                                                                          │  Dashboard          │
+                                                                          │  Streamlit +        │
+                                                                          │  Plotly (público)   │
                                                                           └─────────────────────┘
 ```
 
@@ -42,9 +42,9 @@ El primer desafío fue obtener los datos. La API interna de la plataforma (`/rpl
 
 La solución fue analizar en profundidad cómo el sitio carga sus datos antes de escribir una sola línea de código. Al tratarse de una aplicación con renderizado del lado del servidor, los datos de los listados viajan serializados en el propio HTML de la respuesta, antes de que el JavaScript del cliente los procese.
 
-Este enfoque es cualitativamente distinto al web scraping tradicional basado en selectores CSS o XPath, que depende de la estructura visual del HTML y se rompe ante cualquier cambio de diseño. En este caso, los datos se interceptan **a nivel de la capa de estado de la aplicación** — estructurados, completos y listos para ser parseados — sin depender de la disposición de los elementos en la página ni de interacciones con el DOM.
+Este enfoque es cualitativamente distinto al web scraping tradicional basado en selectores CSS o XPath. Los datos se interceptan **a nivel de la capa de estado de la aplicación** — estructurados, completos y listos para ser parseados.
 
-**El reto de extracción del JSON**: el JSON embebido en el HTML está seguido de código JavaScript adicional, lo que hace que una expresión regular simple falle. La solución fue un algoritmo de **balanceo de llaves** — contar la profundidad de apertura y cierre de `{}` para identificar el límite exacto del objeto JSON, en lugar de buscar un patrón de texto.
+**El reto de extracción del JSON**: el JSON embebido en el HTML está seguido de código JavaScript adicional, lo que hace que una expresión regular simple falle. La solución fue un algoritmo de **balanceo de llaves** — contar la profundidad de apertura y cierre de `{}` para identificar el límite exacto del objeto JSON.
 
 **Comportamiento anti-detección**:
 - Delay aleatorio de **2.5 a 5.0 segundos** entre cada request para simular navegación humana.
@@ -104,18 +104,21 @@ La carga usa **UPSERT** (`INSERT ... ON CONFLICT DO UPDATE`): si el script se co
 
 ---
 
-### Fase 4 — Análisis Exploratorio (EDA)
+### Fase 4 — Dashboard Interactivo (Streamlit + Plotly)
 
-El análisis se realizó en dos capas:
+El análisis se expone en un dashboard público con 7 secciones interactivas:
 
-**SQL directo en DBeaver** (exploración inicial):
-- Precios máximos y mínimos por distrito con `JOIN` entre tablas.
-- Promedio limpio con filtro `es_valido`.
-- Ranking de anunciantes por volumen de propiedades publicadas.
-- Cálculo de percentiles para detectar outliers (IQR).
+| Sección | Descripción |
+|---|---|
+| **Ranking por precio** | Top 10 distritos más caros y más económicos |
+| **Mapa geográfico** | Burbujas por distrito (tamaño = oferta, color = precio) |
+| **Distribución de precios** | Histograma completo de 17K anuncios válidos |
+| **Tipos de propiedad** | Pie chart + barra: Departamentos, Casas, Terrenos, etc. |
+| **Tendencia de publicaciones** | Actividad mensual desde 2020 hasta 2026 |
+| **Dormitorios y Baños** | Distribución de características en casas y departamentos |
+| **Amenidades** | Top 20 amenidades más ofrecidas (gimnasio, piscina, etc.) |
 
-**Jupyter Notebook** (`analisis/analisis_urbania.ipynb`):
-Conexión a PostgreSQL vía `SQLAlchemy` + `pd.read_sql_query()`, que ejecuta el triple JOIN del modelo estrella y carga el resultado en un DataFrame Pandas para análisis y visualización.
+**Filtros cruzados**: el filtro de tipo de propiedad (Casas, Departamentos, Terrenos…) afecta el ranking, el mapa y las métricas del sidebar de forma consistente. El filtro de distrito se adapta automáticamente a los distritos disponibles para el tipo seleccionado.
 
 ---
 
@@ -134,7 +137,7 @@ La Molina supera a Miraflores porque concentra casas y terrenos grandes, mientra
 
 ### Hallazgo 2: Brecha de precios de 10x entre distritos
 
-Los distritos más económicos son Huacho (S/ 204,600) e Independencia (S/ 280,375). La brecha entre La Molina y Huacho es de **10x**, reflejando una desigualdad marcada en el mercado inmobiliario limeño.
+Los distritos más económicos son Independencia (S/ 280,375) y Rímac (S/ 312,926). La brecha entre La Molina y estos distritos es de **6-7x**, reflejando una desigualdad marcada en el mercado inmobiliario limeño.
 
 ### Hallazgo 3: El promedio engaña — la mediana dice la verdad
 
@@ -146,7 +149,20 @@ Los distritos más económicos son Huacho (S/ 204,600) e Independencia (S/ 280,3
 
 La distribución de precios está fuertemente sesgada a la derecha. La mediana (S/ 868K) representa mejor al comprador típico que el promedio (S/ 1.7M). Usar el promedio como referencia de mercado es estadísticamente engañoso.
 
-### Hallazgo 4: La oferta se concentra en Lima centro-sur
+### Hallazgo 4: Los departamentos dominan la oferta (52% del mercado)
+
+| Tipo | Anuncios | % |
+|---|---|---|
+| Departamentos | ~10,272 | 52.7% |
+| Casas | ~3,516 | 18.0% |
+| Terrenos | ~3,375 | 17.3% |
+| Otros | ~2,329 | 12.0% |
+
+### Hallazgo 5: El 3-dormitorio es el estándar del mercado
+
+En casas y departamentos, la configuración de **3 dormitorios y 2 baños** es la más publicada por amplio margen, seguida de la de 2 dormitorios. Las propiedades de 1 dormitorio representan menos del 8% de la oferta.
+
+### Hallazgo 6: La oferta se concentra en Lima centro-sur
 
 El mapa geográfico muestra una alta densidad de anuncios en el eje Miraflores–Surco–La Molina, con disminución progresiva hacia la periferia norte y este. 1,799 propiedades (9.2%) no pudieron graficarse por carecer de coordenadas en el anuncio original.
 
@@ -162,8 +178,8 @@ El mapa geográfico muestra una alta densidad de anuncios en el eje Miraflores�
 | Conexión Python↔DB | `psycopg2-binary`, `SQLAlchemy` |
 | Transformación / ETL | Python puro (sin frameworks) |
 | Análisis | `pandas` |
-| Visualización | `matplotlib`, `seaborn`, `folium` |
-| Notebook | Jupyter / VS Code `.ipynb` |
+| Visualización interactiva | `plotly`, `streamlit` |
+| Dashboard público | Streamlit Cloud |
 | Entorno | CachyOS (Arch Linux), venv |
 
 ---
@@ -173,13 +189,23 @@ El mapa geográfico muestra una alta densidad de anuncios en el eje Miraflores�
 ```
 urbania_datos/
 ├── analisis/
-│   └── analisis_urbania.ipynb   # Notebook EDA completo con 4 hallazgos
-├── load_db.py                   # Script ETL: JSONL → PostgreSQL (con UPSERT)
-├── schema.sql                   # Definición del Star Schema en PostgreSQL
+│   └── analisis_urbania.ipynb        # Notebook EDA completo
+├── data/
+│   ├── resumen_distritos.csv         # Precio promedio y coords por distrito
+│   ├── resumen_tipo_distrito.csv     # Precios por tipo de propiedad × distrito
+│   ├── histograma_precios.csv        # Distribución de precios (50 rangos)
+│   ├── tipos_propiedad.csv           # Conteo por tipo de propiedad
+│   ├── publicaciones_por_mes.csv     # Actividad mensual de publicaciones
+│   ├── dormitorios.csv               # Distribución de dormitorios
+│   ├── banos.csv                     # Distribución de baños
+│   └── amenidades.csv                # Top 20 amenidades más ofrecidas
+├── app.py                            # Dashboard Streamlit interactivo
+├── load_db.py                        # Script ETL: JSONL → PostgreSQL (UPSERT)
+├── schema.sql                        # Star Schema en PostgreSQL
 └── README.md
 ```
 
-> ⚠️ **Nota sobre los datos**: Los datos provienen de páginas de resultados públicas de una plataforma inmobiliaria peruana. Los datos crudos y el script de recolección **no se incluyen en este repositorio** en cumplimiento de los términos de servicio de la plataforma. El repositorio contiene únicamente el código de transformación, almacenamiento y análisis.
+> ⚠️ **Nota sobre los datos**: Los datos provienen de páginas de resultados públicas de [urbania.com](https://urbania.com). Los datos crudos y el script de recolección **no se incluyen en este repositorio** en cumplimiento de los términos de servicio de la plataforma. El repositorio contiene únicamente el código de transformación, almacenamiento, análisis y visualización.
 
 ---
 
@@ -190,10 +216,16 @@ urbania_datos/
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install pandas matplotlib seaborn sqlalchemy psycopg2-binary folium jupyter
+pip install -r requirements.txt
 ```
 
-### Base de datos
+### Dashboard local
+
+```bash
+streamlit run app.py
+```
+
+### Base de datos (opcional — para el notebook)
 
 Crea una base de datos PostgreSQL y ejecuta el schema:
 
@@ -202,7 +234,7 @@ createdb urbania_db
 psql -d urbania_db -f schema.sql
 ```
 
-Define las credenciales por variables de entorno (evita contraseñas en el código):
+Define las credenciales por variables de entorno:
 
 ```bash
 export DB_NAME=urbania_db
@@ -218,7 +250,7 @@ Carga tus datos con:
 python3 load_db.py
 ```
 
-### Análisis
+### Notebook EDA
 
 ```bash
 jupyter notebook analisis/analisis_urbania.ipynb
@@ -234,12 +266,13 @@ jupyter notebook analisis/analisis_urbania.ipynb
 - **Calidad de datos**: método IQR para detección estadística de outliers + reglas de negocio, sin borrar datos originales.
 - **ETL con UPSERT**: pipelines reanudables e idempotentes.
 - **EDA narrativo**: hallazgos con contexto de negocio, diferencia entre promedio y mediana, análisis geográfico.
+- **Dashboard interactivo**: filtros cruzados con Streamlit + Plotly, desplegado en la nube.
 
 ---
 
 ## 👤 Autor
 
-**Diego** — Estudiante de Ingeniería de Sistemas (UTP, 10° ciclo, décimo superior)
+**Diego Rivera** — Estudiante de Ingeniería de Sistemas (UTP, 10° ciclo, décimo superior)
 Orientado a Ingeniería de Datos y Análisis de Datos.
 
 📎 [LinkedIn](https://www.linkedin.com/in/diegoriverapicoy/)
