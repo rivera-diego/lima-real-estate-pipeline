@@ -16,3 +16,11 @@ urbania.py
 # Importante: No ignoramos la carpeta 'data/' porque 
 # ahora contiene nuestros resúmenes matemáticos seguros.
 data/propiedades_limpias.csv
+
+# CV — archivos locales, no van al repo
+cv_diego_rivera.tex
+cv_diego_rivera.pdf
+cv_diego_rivera.aux
+cv_diego_rivera.log
+cv_diego_rivera.out
+CV_RIVERA PICOY DIEGO ARMANDO.pdf
